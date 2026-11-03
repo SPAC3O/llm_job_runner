@@ -1,0 +1,82 @@
+x-db: &x-db
+  environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+services:
+  postgres:
+    <<: *x-db
+    image: postgres:17-alpine
+    container_name: llm_job_runner_postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/queue.sql:/docker-entrypoint-initdb.d/01-queue.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    <<: *x-db
+    image: postgres:17-alpine
+    container_name: llm_job_runner_migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations/queue.sql:/migrations/queue.sql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - psql -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /migrations/queue.sql
+
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: llm_job_runner_rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_logs:/var/log/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build: .
+    container_name: llm_job_runner_consumer_llm_jobs
+    env_file:
+      - .env
+    entrypoint: ["python"]
+    command: ["-m", "app.worker.main"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: llm_job_runner
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  rabbitmq_logs:
