@@ -20,7 +20,7 @@ from schemas import JobTaskStatus, JobTaskType
 @pytest.fixture(scope="session")
 def test_engine():
     engine = create_async_engine(
-        os.environ["DATABASE_URL"],
+        os.environ["DB_URL"],
         poolclass=NullPool,
     )
     return engine
