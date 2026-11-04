@@ -11,11 +11,39 @@ from sqlalchemy import select, update
 from functools import partial
 
 from db import models, async_session_local
-from schemas import JobTaskStatus, LlmMessage
+from schemas import JobTaskStatus, LlmMessage, JobTaskType
 from core import OpenAIClient, settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rabbitmq")
+
+PROMPT_SUMMARIZATION = "Return a concise summary of a given text."
+PROMPT_CLASSIFICATION = "Classify text into a fixed set of categories: 'positive', 'neutral', 'negative', 'mixed'. Return only the category name."
+CLASSIFICATION_CATEGORIES = ("positive", "neutral", "negative", "mixed")
+
+
+def choose_prompt(task_type: str) -> str:
+    match task_type:
+        case JobTaskType.summarization.value:
+            prompt = PROMPT_SUMMARIZATION
+        case JobTaskType.classification.value:
+            prompt = PROMPT_CLASSIFICATION
+        case _:
+            prompt = None
+
+    return prompt
+
+
+def prepare_result(task_type: str, response: str) -> dict:
+    match task_type:
+        case JobTaskType.summarization.value:
+            result_data = {"text": response}
+        case JobTaskType.classification.value if response in CLASSIFICATION_CATEGORIES:
+            result_data = {"category": response}
+        case _:
+            result_data = None
+
+    return result_data
 
 
 async def process_job(
@@ -43,16 +71,25 @@ async def process_job(
     await db.refresh(job_attempt)
 
     try:
+        prompt = choose_prompt(job_existing.task_type)
+        if prompt is None:
+            raise LookupError("Invalid task type")
+
         response = await llm_client.chat_completion(
             messages=[
                 LlmMessage(
                     role="developer",
-                    content="Return a concise summary of a given text.",
+                    content=prompt,
                 ),
                 LlmMessage(role="user", content=job_existing.input_data["text"]),
             ],
             model=settings.llm.model,
         )
+
+        result_data = prepare_result(job_existing.task_type, response.message)
+        if result_data is None:
+            logger.debug(f"Result data: {result_data}")
+            raise LookupError("Invalid response")
 
         job_attempt.finished_at = datetime.datetime.now(datetime.UTC)
         job_attempt.status = JobTaskStatus.succeeded.value
@@ -61,7 +98,7 @@ async def process_job(
         job_attempt.completion_tokens = response.usage.completion_tokens
 
         job_existing.status = JobTaskStatus.succeeded.value
-        job_existing.result_data = {"text": response.message}
+        job_existing.result_data = result_data
         job_existing.prompt_tokens = (
             response.usage.prompt_tokens
             if job_existing.prompt_tokens is None
@@ -79,7 +116,9 @@ async def process_job(
         job_attempt.status = JobTaskStatus.failed.value
         job_attempt.error_message = str(e)
         job_attempt.finished_at = datetime.datetime.now(datetime.UTC)
-        logger.error(f"Error occured during making llm call on job with id: {job_id}")
+        logger.error(
+            f"Error occured during making llm call on job with id: {job_id}. Error: {str(e)}"
+        )
         await db.commit()
         await db.refresh(job_existing)
         raise
@@ -142,8 +181,6 @@ async def consume(
 ) -> None:
     channel = await connection.channel()
     try:
-        # await channel.set_qos(prefetch_count=1)
-
         queue_item = await channel.get_queue(queue)
 
         logger.info(f"Waiting for jobs on queue: {queue}")

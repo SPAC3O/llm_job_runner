@@ -1,5 +1,6 @@
 __pycache__
-.env*
-.venv*
+.env
+.env.test
+.venv
 .pytest_cache
 .ruff_cache

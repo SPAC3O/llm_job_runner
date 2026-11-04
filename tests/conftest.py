@@ -14,7 +14,7 @@ load_dotenv(".env.test", override=True)
 
 from db import models
 from db.models import Base
-from schemas import JobTaskStatus
+from schemas import JobTaskStatus, JobTaskType
 
 
 @pytest.fixture(scope="session")
@@ -67,7 +67,7 @@ async def db_session(
 async def queued_job(db_session):
     job = models.Job(
         id=uuid.uuid4(),
-        task_type="summary",
+        task_type=JobTaskType.summarization.value,
         status=JobTaskStatus.queued.value,
         input_data={"text": "Test input"},
         idempotency_key=str(uuid.uuid4()),

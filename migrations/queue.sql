@@ -35,8 +35,6 @@ CREATE TABLE IF NOT EXISTS job_attempt(
     job_id              UUID REFERENCES job(id) NOT NULL,
     attempt_number      INTEGER             NOT NULL,
     status              VARCHAR(10)         NOT NULL,
-    -- if available 
-    provider_request_id VARCHAR(255)        NULL,
     prompt_tokens       INTEGER             NULL,
     completion_tokens   INTEGER             NULL,
     latency_ms          INTEGER             NULL,

@@ -3,7 +3,7 @@ from aio_pika.abc import AbstractRobustConnection
 
 from core import settings
 
-QUEUES = [settings.queue.llm_jobs_queue]
+QUEUES = (settings.queue.llm_jobs_queue)
 
 
 async def connect() -> AbstractRobustConnection:

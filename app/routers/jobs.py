@@ -55,7 +55,7 @@ async def create_job(
         return job_existing
 
     match job.task_type:
-        case JobTaskType.summarization:
+        case (JobTaskType.summarization | JobTaskType.classification):
             input = job.input.text.strip()
             if input is None or not len(input):
                 raise HTTPException(
