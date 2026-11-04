@@ -124,7 +124,7 @@ Create a `.env` file in the project root directory with the following variables:
 |LLM_BASE_URL|OpenAI API base URL|https://example.com/v1|
 |LLM_MODEL|LLM model name|model-name|
 
-To run the **automated tests**, you must also create a `.env.test` file in the project root directory. It should contain the same variables, using placeholder values for all variables except `DB_URL`, which should point to a separate test database.
+To run the **automated tests**, you must also create a `.env.test` file in the project root directory. It should contain `DB_URL` variable, which should point to a separate test database.
 
 ## Deploy with Docker
 Build and start the application using Docker Compose:
